@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prop Firm Risk Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0b0f19; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; }
+        .card { background-color: #111827; border: 1px solid #1f2937; border-radius: 0.75rem; }
+        .input-group label { display: block; font-size: 0.875rem; font-weight: 500; color: #9ca3af; margin-bottom: 0.25rem; }
+        input, select { background-color: #1f2937; border: 1px solid #374151; color: #f3f4f6; padding: 0.625rem; border-radius: 0.5rem; width: 100%; transition: border-color 0.2s; }
+        input:focus, select:focus { outline: none; border-color: #3b82f6; }
+        .sl-input { border-left: 4px solid #ef4444; }
+        .tp-input { border-left: 4px solid #10b981; }
+    </style>
+</head>
+<body class="p-4 md:p-8 min-h-screen">
+    <div class="max-w-4xl mx-auto space-y-6">
+        <header class="text-center pb-4 border-b border-gray-800">
+            <h1 class="text-3xl font-bold text-blue-500">Prop Firm Risk Manager</h1>
+            <p class="text-gray-400 mt-2">Dynamic Lot Size & Drawdown Calculator</p>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Account & Rule Settings -->
+            <div class="card p-6 space-y-4">
+                <h2 class="text-xl font-semibold text-white mb-4 border-b border-gray-700 pb-2">1. Account Parameters</h2>
+                
+                <div class="input-group">
+                    <label>Drawdown Type</label>
+                    <select id="ddType">
+                        <option value="trailing">Trailing Drawdown</option>
+                        <option value="static">Static Drawdown</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label>Current Available Drawdown ($)</label>
+                    <input type="number" id="maxDd" placeholder="e.g., 400" step="0.01">
+                    <p class="text-xs text-gray-500 mt-1">If static, update this as your balance grows.</p>
+                </div>
+
+                <div class="p-4 bg-blue-900/20 border border-blue-800/50 rounded-lg">
+                    <p class="text-sm text-blue-300"><strong>Your Risk Rule:</strong> Max Drawdown ÷ 7</p>
+                    <div class="text-2xl font-bold text-blue-400 mt-1" id="calculatedRisk">$0.00</div>
+                </div>
+            </div>
+
+            <!-- Trade Execution -->
+            <div class="card p-6 space-y-4">
+                <h2 class="text-xl font-semibold text-white mb-4 border-b border-gray-700 pb-2">2. Trade Details</h2>
+                
+                <div class="input-group">
+                    <label>Asset Class</label>
+                    <select id="assetType">
+                        <option value="forex">Standard Forex (EURUSD, GBPUSD)</option>
+                        <option value="jpy">JPY Pairs (USDJPY, GBPJPY)</option>
+                        <option value="gold">Gold (XAUUSD)</option>
+                        <option value="btc">Bitcoin (BTCUSD)</option>
+                        <option value="dxy">DXY</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="input-group">
+                        <label>Entry Price</label>
+                        <input type="number" id="entry" placeholder="0.00000" step="0.00001">
+                    </div>
+                    <div class="input-group">
+                        <label>Stop Loss (SL)</label>
+                        <input type="number" id="sl" class="sl-input" placeholder="0.00000" step="0.00001">
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Take Profit (TP)</label>
+                    <input type="number" id="tp" class="tp-input" placeholder="0.00000" step="0.00001">
+                </div>
+            </div>
+        </div>
+
+        <!-- Results & Advice -->
+        <div class="card p-6 bg-gray-900 mt-6 border-gray-700">
+            <h2 class="text-xl font-semibold text-white mb-4">3. Execution & Advice</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="p-4 bg-gray-800 rounded-lg text-center border border-gray-700">
+                    <p class="text-gray-400 text-sm">Required Lot Size</p>
+                    <p class="text-3xl font-bold text-white mt-1" id="lotSize">0.00</p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg text-center border border-gray-700">
+                    <p class="text-gray-400 text-sm">Risk:Reward Ratio</p>
+                    <p class="text-3xl font-bold text-white mt-1" id="rrRatio">0:0</p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg text-center border border-gray-700">
+                    <p class="text-gray-400 text-sm">Distance to SL (Pips/Pts)</p>
+                    <p class="text-3xl font-bold text-white mt-1" id="slDistance">0.0</p>
+                </div>
+            </div>
+
+            <div id="adviceBox" class="p-4 rounded-lg border-l-4 border-gray-500 bg-gray-800 text-gray-300">
+                Awaiting input to generate AI trading advice...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const inputs = ['maxDd', 'assetType', 'entry', 'sl', 'tp', 'ddType'];
+        inputs.forEach(id => document.getElementById(id).addEventListener('input', calculate));
+
+        function calculate() {
+            const maxDd = parseFloat(document.getElementById('maxDd').value);
+            const asset = document.getElementById('assetType').value;
+            const entry = parseFloat(document.getElementById('entry').value);
+            const sl = parseFloat(document.getElementById('sl').value);
+            const tp = parseFloat(document.getElementById('tp').value);
+            const ddType = document.getElementById('ddType').value;
+
+            // 1. Calculate Risk (Rule: Max Drawdown / 7)
+            let risk = 0;
+            if (!isNaN(maxDd) && maxDd > 0) {
+                risk = maxDd / 7;
+                document.getElementById('calculatedRisk').innerText = `$${risk.toFixed(2)}`;
+            } else {
+                document.getElementById('calculatedRisk').innerText = '$0.00';
+            }
+
+            // 2. Calculate Pips/Points Distance
+            let lotSize = 0;
+            let rr = 0;
+            let advice = "Awaiting trade details...";
+            let adviceClass = "border-gray-500 bg-gray-800 text-gray-300";
+
+            if (!isNaN(entry) && !isNaN(sl) && entry !== sl) {
+                let distance = Math.abs(entry - sl);
+                let pointMultiplier = 1;
+                let pipDisplay = 0;
+
+                // Adjust multiplier based on asset class to normalize standard lots ($10/pip standard)
+                if (asset === 'forex') { pointMultiplier = 100000; pipDisplay = distance * 10000; }
+                else if (asset === 'jpy') { pointMultiplier = 1000; pipDisplay = distance * 100; }
+                else if (asset === 'gold') { pointMultiplier = 100; pipDisplay = distance * 10; }
+                else if (asset === 'btc') { pointMultiplier = 1; pipDisplay = distance; }
+                else if (asset === 'dxy') { pointMultiplier = 100; pipDisplay = distance * 100; }
+
+                document.getElementById('slDistance').innerText = pipDisplay.toFixed(1);
+
+                // Calculate Lot Size: Risk Amount / (Distance * Point Value Multiplier)
+                if (risk > 0) {
+                    lotSize = risk / (distance * pointMultiplier * 0.1); 
+                    // 0.1 factor normalizes standard $10/pip calculation for standard lot
+                }
+
+                // Calculate RR Ratio
+                if (!isNaN(tp)) {
+                    let tpDistance = Math.abs(tp - entry);
+                    rr = tpDistance / distance;
+                    document.getElementById('rrRatio').innerText = `1:${rr.toFixed(2)}`;
+
+                    // Generate Advice
+                    if (rr < 1) {
+                        advice = "⚠️ **WARNING:** Risk to Reward is less than 1:1. This is mathematically disadvantageous. Re-evaluate your setup.";
+                        adviceClass = "border-red-500 bg-red-900/20 text-red-300";
+                    } else if (rr >= 2) {
+                        advice = "✅ **GOOD SETUP:** RR is solid. Once you are 1:1 in profit, **MOVE STOP LOSS TO BREAKEVEN (Risk-Free)**. Remember your firm's rules: Never let a floating profit turn into a heavy loss.";
+                        adviceClass = "border-green-500 bg-green-900/20 text-green-300";
+                    } else {
+                        advice = "⚖️ **MODERATE SETUP:** Acceptable RR. Monitor closely and trail stop loss once price breaks market structure in your direction.";
+                        adviceClass = "border-yellow-500 bg-yellow-900/20 text-yellow-300";
+                    }
+                }
+            } else {
+                document.getElementById('slDistance').innerText = '0.0';
+                document.getElementById('rrRatio').innerText = '0:0';
+            }
+
+            // Drawdown type warning
+            if (ddType === 'trailing' && maxDd < 200) {
+                advice += "<br><br>🚨 **CRITICAL DRAWDOWN ALERT:** You are using a trailing drawdown and are close to your limit. Double-check your daily loss limit. Consider dropping risk to 0.5% or taking a break for the day.";
+                adviceClass = "border-red-600 bg-red-900/40 text-red-200";
+            }
+
+            document.getElementById('lotSize').innerText = lotSize > 0 ? lotSize.toFixed(2) : "0.00";
+            const adviceBox = document.getElementById('adviceBox');
+            adviceBox.innerHTML = advice;
+            adviceBox.className = `p-4 rounded-lg border-l-4 mt-4 ${adviceClass}`;
+        }
+    </script>
+</body>
+</html>
